@@ -1,0 +1,22 @@
+# Runtime dependencies for the KAVACH allocation tool.
+# Tested baseline: Python 3.11, openpyxl 3.1.5, ortools 9.15.6755.
+
+# Required: read/write the RDSO Excel workbooks.
+openpyxl>=3.1,<4
+
+# Required (default optimiser): the CP-SAT backend -> spectrum-minimal +
+# wider-separation colouring AND the time-domain IM staggering that eliminates
+# residual three-tone products. This is the supported default and should always
+# be installed. (A pure-Python fallback remains ONLY as a safety net for
+# constrained environments that genuinely cannot install OR-Tools; it produces a
+# valid plan but skips staggering, so residual three-tone IM is left for the ISA.)
+#
+# DEPLOYMENT NOTE (Windows): the field-tested-good version is 9.12.4544 -- some
+# Windows installs crashed (native access violation) on 9.15 with very new
+# numpy/pandas. OR-Tools on Windows also requires the Microsoft Visual C++
+# Redistributable (x64): https://aka.ms/vs/17/release/vc_redist.x64.exe
+# The shipped operator package pins ortools==9.12.4544 for reproducibility.
+ortools>=9.7
+
+# Dev/test only (not needed to run the tool):
+#   pytest>=7

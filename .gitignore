@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+frequency-timeslot-analysis/allocation_*.csv
+frequency-timeslot-analysis/*_compliant.xlsx
