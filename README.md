@@ -2,7 +2,7 @@
 
 An open-source optimization tool that generates **RDSO TAN/SPN-compliant
 frequency-pair and TDMA time-slot allocations** for KAVACH (Indian Railways
-Automatic Train Protection) stations along a railway section — minimising radio
+Automatic Train Protection) stations along a railway section minimising radio
 spectrum and third-order intermodulation (IM3) interference, and producing an
 auditable compliance and change-justification record.
 
