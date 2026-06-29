@@ -12,6 +12,9 @@ USAGE
 
 Options
     --window N        interference radius in stations (default 4 ~ 10-15 km)
+    --rf-range KM     use the real RF-range interference model from the chart's
+                      tower latitude/longitude (overrides --window when lat/long
+                      are present for every station)
     --palette FILE    frequency palette from a .csv or .xlsx (columns:
                       pair, fS, fM; optional row pair=f0 for the control freq).
                       Default: built-in KAVACH reference palette.
@@ -19,7 +22,7 @@ Options
     --legacy-slots    use the chart's pre-computed slot columns instead of the
                       (default) spec-traceable slot_demand calculator
     --peak-cap N      Railway-Board operational cap on supervised trains per
-                      station (operator commissioning policy): e.g. 20, 24.
+                      station (RB letter 31.07.2023): e.g. 20 initial, 24 final.
                       Default: uncapped (use the chart's peak figure as-is).
     --boundary FILE   CSV (station_id,pair_id) pinning boundary-station pairs to
                       the adjacent section (scalable; no prompt)
@@ -69,6 +72,7 @@ def main(argv):
     reserve_n = 0               # reserve N pairs for boundary stations only
     registry_file = None        # national boundary registry CSV (read + write back)
     peak_cap = None             # Railway-Board operational cap on supervised trains
+    rf_range = None             # RF interference radius (km); uses chart lat/long
     rest = argv[2:]
     i = 0
     while i < len(rest):
@@ -94,6 +98,8 @@ def main(argv):
             registry_file = rest[i + 1]; i += 2
         elif rest[i] == "--peak-cap" and i + 1 < len(rest):
             peak_cap = int(rest[i + 1]); i += 2
+        elif rest[i] == "--rf-range" and i + 1 < len(rest):
+            rf_range = float(rest[i + 1]); i += 2
         else:
             out = rest[i]; i += 1
     if out is None:
@@ -132,21 +138,40 @@ def main(argv):
     import slot_demand as SD
     gap_slots = None if gap_ms is None else math.ceil(gap_ms / A.MARKER_MS)
     chart = excel_io.read_chart(inp)
+    positions = chart.get("positions") if rf_range is not None else None
+    if rf_range is not None and positions is None:
+        print("Note: --rf-range given but chart has no lat/long; using station "
+              f"window (reuse_window={window}) instead")
     prob = excel_io.build_problem(chart, palette=palette, f0=f0,
                                   reuse_window=window,
                                   use_slot_demand=not legacy_slots,
-                                  peak_load_cap=peak_cap)
+                                  peak_load_cap=peak_cap,
+                                  positions=positions, rf_range_km=rf_range)
+    if positions is not None:
+        print(f"Interference: real RF-range model, radius {rf_range} km "
+              f"(from chart lat/long)")
 
     # spec-traceable slot demand summary + per-section spectrum roll-up (default ON)
     src_slots = "legacy chart column" if legacy_slots else "slot_demand (RDSO-traceable)"
+    # per-station slot demand (n_station, n_loco) from the spec-traceable model
+    demand = {}
+    for sid in chart["stations"]:
+        sig = chart.get("signals", {}).get(sid, 2)
+        d = SD.slot_demand(SD.StationDemandInputs(
+            peak_locos=chart["loco_slots"].get(sid, 0),
+            last_stop_signals=sig, peak_load_cap=peak_cap))
+        d["last_stop_signals"] = sig
+        demand[sid] = d
     roll = SD.section_rollup(
         {sid: SD.StationDemandInputs(peak_locos=chart["loco_slots"].get(sid, 0),
                                      last_stop_signals=chart.get("signals", {}).get(sid, 2),
                                      peak_load_cap=peak_cap)
-         for sid in chart["stations"]}, reuse_window=window)
+         for sid in chart["stations"]}, reuse_window=window,
+        positions=(chart.get("positions") if rf_range is not None else None),
+        rf_range_km=rf_range)
     if peak_cap is not None:
         print(f"Peak-load: supervised trains capped at {peak_cap}/station "
-              f"(operator commissioning policy)")
+              f"(Railway Board, RB letter 31.07.2023)")
     print(f"Slots  : demand from {src_slots}; section needs >= "
           f"{roll['freq_pairs_min']} frequency pairs "
           f"(total demand {roll['total_slots']} slots; "
@@ -220,6 +245,11 @@ def main(argv):
     print(f"Spectrum used: {result['spectrum']} pairs {sorted(result['used_pairs'])}")
     print(f"Validation: "
           f"{'PASS - zero interference' if not result['errors'] else result['errors']}\n")
+
+    if not legacy_slots:
+        print("STATION & LOCO SLOT DEMAND (spec-traceable; SPN/196 Annexure-C)")
+        A.slot_demand_table(chart["stations"], demand)
+        print()
 
     print("FREQUENCY & TIME-SLOT ALLOCATION AT EVERY STATION")
     A.print_allocation_table(prob, result)

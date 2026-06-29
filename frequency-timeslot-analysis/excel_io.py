@@ -23,8 +23,12 @@ from allocation_solver import (Pair, Problem, solve_compliant, allocation_table,
 _LBL_ID = "stationary kavach id"
 _LBL_PEAK = "peak nos"               # Peak nos. of Onboard Kavach Units  -> loco slots
 _LBL_PAIR = "proposed frequency pair"
-_LBL_STA = "number of stationary"    # Number of Stationary Kavach Tx slots
+_LBL_STA = "number of stationary"    # Number of Stationary Kavach Tx slots (OUTPUT; optional)
 _LBL_SIG = "last stop signal"        # No. of Last Stop Signals -> slot-demand input
+_LBL_NAME = "station name"           # optional, for readable output
+_LBL_CODE = "station code"           # optional
+_LBL_LAT = "lattitude"               # Stationary Unit Tower Lattitude (sic, as in chart)
+_LBL_LON = "longitude"               # Stationary Unit Tower Longitude
 
 
 def _find_row(ws, keyword):
@@ -51,8 +55,34 @@ def _int(x):
     return None
 
 
+def _float(x):
+    """Coerce a cell to float; None if not numeric."""
+    try:
+        return float(str(x).strip()) if x not in (None, "") else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _haversine_km(lat1, lon1, lat2, lon2):
+    """Great-circle distance (km) between two lat/long points."""
+    import math
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+
 def read_chart(path, sheet="Frequency allocation"):
-    """Parse the allocation workbook -> dict of per-station inputs."""
+    """Parse the allocation workbook -> dict of per-station inputs.
+
+    Required input rows:  Stationary Kavach ID, Peak nos. of Onboard Kavach Units.
+    Optional input rows:  No. of Last Stop Signals (default 2), Proposed Frequency
+                          Pair, Station Name/code, Tower Latitude/Longitude.
+    The 'Number of Stationary Kavach Tx slots' row is an OUTPUT and is NOT required
+    on input (the tool computes it); it is read only if present (for --legacy-slots).
+    When latitude+longitude are supplied for every station, an along-route chainage
+    (km) is derived and returned as `positions` for the real RF-range model."""
     import openpyxl
     wb = openpyxl.load_workbook(path, data_only=True)
     ws = wb[sheet] if sheet in wb.sheetnames else wb[wb.sheetnames[0]]
@@ -62,17 +92,17 @@ def read_chart(path, sheet="Frequency allocation"):
     r_pair = _find_row(ws, _LBL_PAIR)
     r_sta = _find_row(ws, _LBL_STA)
     r_sig = _find_row(ws, _LBL_SIG)
+    r_name = _find_row(ws, _LBL_NAME)
+    r_code = _find_row(ws, _LBL_CODE)
+    r_lat = _find_row(ws, _LBL_LAT)
+    r_lon = _find_row(ws, _LBL_LON)
     if r_id is None:
         raise ValueError("could not locate 'Stationary Kavach ID' row")
-    missing = [name for name, r in (("Number of Stationary Kavach Tx slots", r_sta),
-                                    ("Peak nos. of Onboard Kavach Units", r_peak))
-               if r is None]
-    if missing:
-        raise ValueError(f"chart is missing required row(s): {missing}")
+    if r_peak is None:
+        raise ValueError("chart is missing required row "
+                         "'Peak nos. of Onboard Kavach Units'")
 
     def cell_int(r, c, field):
-        """Coerce a slot cell; warn (don't silently zero) on a non-empty,
-        non-numeric value so garbage is never read as 0."""
         if r is None:
             return 0
         raw = ws.cell(r, c).value
@@ -85,6 +115,7 @@ def read_chart(path, sheet="Frequency allocation"):
         return v
 
     stations, sta, loco, existing, sig = [], {}, {}, {}, {}
+    names, codes, lat, lon = {}, {}, {}, {}
     seen = set()
     for c in range(1, ws.max_column + 1):
         sid = _int(ws.cell(r_id, c).value)
@@ -102,10 +133,30 @@ def read_chart(path, sheet="Frequency allocation"):
             p = _int(ws.cell(r_pair, c).value)
             if p is not None:
                 existing[sid] = p
+        if r_name:
+            names[sid] = ws.cell(r_name, c).value
+        if r_code:
+            codes[sid] = ws.cell(r_code, c).value
+        if r_lat:
+            lat[sid] = _float(ws.cell(r_lat, c).value)
+        if r_lon:
+            lon[sid] = _float(ws.cell(r_lon, c).value)
     if not stations:
         raise ValueError("no Stationary Kavach IDs (10000-99999) found in chart")
+
+    # derive along-route chainage (km) from lat/long when fully supplied
+    positions = None
+    if stations and all(lat.get(s) is not None and lon.get(s) is not None
+                        for s in stations):
+        positions, cum = {}, 0.0
+        positions[stations[0]] = 0.0
+        for prev, cur in zip(stations, stations[1:]):
+            cum += _haversine_km(lat[prev], lon[prev], lat[cur], lon[cur])
+            positions[cur] = round(cum, 3)
+
     return {"stations": stations, "sta_slots": sta, "loco_slots": loco,
-            "signals": sig, "existing_pair": existing}
+            "signals": sig, "existing_pair": existing, "names": names,
+            "codes": codes, "positions": positions}
 
 
 def _parse_palette_rows(rows):
@@ -169,7 +220,7 @@ def build_problem(chart, palette=None, f0=KAVACH_F0, use_slot_demand=False,
     slot_demand calculator from the chart's peak-onboard + last-stop-signals,
     instead of reading the chart's pre-computed slot columns.
     peak_load_cap -> clamp supervised trains per station to this many (Railway
-    operational cap (operator commissioning policy; e.g. 24 for the final phase)."""
+    Board operational cap, RB letter 31.07.2023; e.g. 24 for the final phase)."""
     palette = palette or _mk_palette()
     if use_slot_demand:
         import slot_demand as SD

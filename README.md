@@ -43,6 +43,14 @@ RDSO TAN clause 4.11 (allocation rules), SPN/196 clause 17.14 (frame-offset).
 
 ## Quick start
 
+**One click.** On Windows, double-click **`run.bat`** (or drag your filled chart
+onto it); on macOS/Linux run **`./run.sh`**. It installs the dependencies, runs
+the allocation on the bundled `KAVACH_input_template.xlsx` (or your chart),
+prints the station/loco slots, and writes the output workbook + CSV into
+`output/`.
+
+**Or from the command line:**
+
 ```bash
 cd frequency-timeslot-analysis
 pip install -r requirements.txt
@@ -53,6 +61,9 @@ python3 allocation_solver.py
 # or run on your own RDSO frequency-allocation chart:
 python3 run_allocation.py  your_chart.xlsx  out.xlsx  --window 4
 ```
+
+To fill in your own section, copy `KAVACH_input_template.xlsx`, replace the
+highlighted cells (one column per station, in geographic order), and run it.
 
 `run_allocation.py` reads an RDSO "Frequency Allocation Chart" workbook, computes
 each station's slot demand from first principles, prints the full per-station

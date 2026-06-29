@@ -25,7 +25,7 @@ allocation_solver import ...` call sites keep working unchanged. `validate`,
 `solve` and `solve_compliant` are defined here.
 
 Solvers: OR-Tools CP-SAT if available, else an exact pure-Python branch & bound.
-Run the worked example:  python3 allocation_solver.py
+Run the worked SEC-A-SEC-B example:  python3 allocation_solver.py
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ from slots import (                                  # noqa: F401  (re-exported 
 # --- Reporting (report.py) ---
 from report import (                                 # noqa: F401  (re-exported API)
     _fmt_markers, allocation_table, print_allocation_table, _ALLOC_FIELDS,
-    write_allocation_csv, compliance_report, justify_changes,
+    write_allocation_csv, compliance_report, justify_changes, slot_demand_table,
 )
 
 
@@ -194,12 +194,12 @@ def solve_compliant(prob: Problem, slot_strategy="offset0", gap_slots=None,
 
 
 # ===========================================================================
-# WORKED EXAMPLE
+# WORKED EXAMPLE — SEC-A-SEC-B
 # ===========================================================================
-def _example_demo():
+def _ajj_ru_demo():
     palette = _mk_palette()
     f0 = KAVACH_F0
-    # (station_id, n_station_slots, n_loco_slots) from the example sheet
+    # (station_id, n_station_slots, n_loco_slots) from the SEC-A-SEC-B sheet
     rows = [
         (10001, 7, 5), (10002, 7, 5), (10003, 7, 5), (10004, 11, 11),
         (10005, 8, 6), (10006, 12, 13), (10007, 8, 6), (10008, 10, 10),
@@ -230,7 +230,7 @@ def _example_demo():
     print("\n== COMPLIANCE (RDSO TAN 4.11 + SPN/196) ==")
     for clause, status in compliance_report(prob, res):
         print(f"  [{status.split()[0]:4}] {clause}: {status}")
-    write_allocation_csv("allocation_example.csv", prob, res)
+    write_allocation_csv("allocation_SEC-A-SEC-B.csv", prob, res)
     print()
 
     print("== Layer-1 alternative: design a fresh Sidon (IM3-free) palette ==")
@@ -243,4 +243,4 @@ def _example_demo():
 
 
 if __name__ == "__main__":
-    _example_demo()
+    _ajj_ru_demo()

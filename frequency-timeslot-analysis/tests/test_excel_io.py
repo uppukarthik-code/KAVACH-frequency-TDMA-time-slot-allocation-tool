@@ -7,18 +7,21 @@ openpyxl = pytest.importorskip("openpyxl")
 import excel_io  # noqa: E402
 
 
-def _make_chart(tmp_path, ids, sta, loco, *, drop_sta=False, sta_override=None):
+def _make_chart(tmp_path, ids, sta, loco, *, drop_sta=False, drop_peak=False,
+                sta_override=None):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Frequency allocation"
     ws.cell(1, 1, "Stationary Kavach ID")
-    ws.cell(2, 1, "Peak nos. of Onboard Kavach Units")
+    if not drop_peak:
+        ws.cell(2, 1, "Peak nos. of Onboard Kavach Units")
     if not drop_sta:
         ws.cell(3, 1, "Number of Stationary Kavach Tx slots")
     for k, sid in enumerate(ids):
         c = 2 + k
         ws.cell(1, c, sid)
-        ws.cell(2, c, loco[k])
+        if not drop_peak:
+            ws.cell(2, c, loco[k])
         if not drop_sta:
             ws.cell(3, c, (sta_override[k] if sta_override else sta[k]))
     p = tmp_path / "chart.xlsx"
@@ -40,10 +43,18 @@ def test_duplicate_id_raises(tmp_path):
         excel_io.read_chart(p)
 
 
-def test_missing_required_row_raises(tmp_path):
-    p = _make_chart(tmp_path, [10001], [7], [5], drop_sta=True)
-    with pytest.raises(ValueError, match="missing required row"):
+def test_missing_peak_row_raises(tmp_path):
+    p = _make_chart(tmp_path, [10001], [7], [5], drop_peak=True)
+    with pytest.raises(ValueError, match="Peak nos"):
         excel_io.read_chart(p)
+
+
+def test_sta_slots_row_now_optional(tmp_path):
+    # the legacy 'Number of Stationary Tx slots' row is an OUTPUT and not required
+    p = _make_chart(tmp_path, [10001], [7], [5], drop_sta=True)
+    ch = excel_io.read_chart(p)            # must not raise
+    assert ch['loco_slots'][10001] == 5
+    assert ch['sta_slots'][10001] == 0     # absent -> 0 (ignored by slot_demand)
 
 
 def test_non_numeric_slot_warns_and_zeroes(tmp_path):

@@ -52,17 +52,42 @@ def allocation_table(prob: Problem, result: dict):
 
 def print_allocation_table(prob: Problem, result: dict):
     rows = allocation_table(prob, result)
+    # #StaSlots / #LocoSlots are the computed station- and loco-slot COUNTS
+    # (n_station, n_loco); the window/positions columns show WHERE they sit.
     hdr = (f"{'Station':>8} | {'Pair':>4} | {'fS(dl)':>8} | {'fM(ul)':>8} | {'FO':>2} | "
-           f"{'LocoSlots(uplink, early)':>28} | StationTxWindow(downlink)")
+           f"{'#StaSlots':>9} | {'#LocoSlots':>10} | {'StationTxWindow':>15} | "
+           f"LocoSlots(uplink, early)")
     print(hdr)
     print("-" * (len(hdr) + 6))
     for r in rows:
         print(f"{r['station_id']:>8} | {r['pair']:>4} | {r['fS_dl_MHz']:>8.3f} | "
               f"{r['fM_ul_MHz']:>8.3f} | {r['frame_offset']:>2} | "
-              f"{r['loco_slots']:>28} | {r['station_window']}")
+              f"{r['n_sta']:>9} | {r['n_loco']:>10} | {r['station_window']:>15} | "
+              f"{r['loco_slots']}")
     f0 = rows[0]['f0_MHz'] if rows else None
-    print(f"\n  control/emergency f0 = {f0} MHz (shared, emergency slots P47-P70)")
+    print(f"\n  #StaSlots = station-transmit (downlink) slots n_station; "
+          f"#LocoSlots = loco-transmit (uplink) slots n_loco")
+    print(f"  control/emergency f0 = {f0} MHz (shared, emergency slots P47-P70)")
     print(f"  spectrum used = {result['spectrum']} pairs: {sorted(result['used_pairs'])}")
+
+
+def slot_demand_table(stations, demand):
+    """Print the per-station slot-demand calculation (the methodology's inputs ->
+    n_station, n_loco). `demand[sid]` is a slot_demand() result dict."""
+    hdr = (f"{'Station':>8} | {'PeakOnboard':>11} | {'Signals':>7} | "
+           f"{'n_station':>9} | {'n_loco':>6} | {'total':>5} | {'fits 1 pair':>11}")
+    print(hdr)
+    print("-" * (len(hdr) + 4))
+    for sid in stations:
+        d = demand[sid]
+        print(f"{sid:>8} | {d['peak_locos']:>11} | "
+              f"{d.get('last_stop_signals', ''):>7} | {d['n_station']:>9} | "
+              f"{d['n_loco']:>6} | {d['total_slots']:>5} | "
+              f"{('yes' if d['fits_one_pair'] else 'NO -> split'):>11}")
+    tot_s = sum(demand[s]['n_station'] for s in stations)
+    tot_l = sum(demand[s]['n_loco'] for s in stations)
+    print(f"\n  totals: n_station = {tot_s}, n_loco = {tot_l}, "
+          f"section demand = {tot_s + tot_l} slots")
 
 
 _ALLOC_FIELDS = ['station_id', 'pair', 'fS_dl_MHz', 'fM_ul_MHz', 'f0_MHz',
