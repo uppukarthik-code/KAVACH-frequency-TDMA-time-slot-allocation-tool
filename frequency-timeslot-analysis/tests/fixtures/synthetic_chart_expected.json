@@ -1,0 +1,193 @@
+{
+  "_about": "Golden values for the synthetic back-test chart. Pure slot_demand arithmetic (RDSO/SPN-196 traceable); solver-independent. Regenerate with make_golden.py.",
+  "n_stations": 22,
+  "per_station": {
+    "10001": {
+      "fits_one_pair": true,
+      "last_stop_signals": 2,
+      "n_loco": 4,
+      "n_station": 6,
+      "peak_locos": 4,
+      "total_slots": 10
+    },
+    "10002": {
+      "fits_one_pair": true,
+      "last_stop_signals": 2,
+      "n_loco": 6,
+      "n_station": 8,
+      "peak_locos": 6,
+      "total_slots": 14
+    },
+    "10003": {
+      "fits_one_pair": true,
+      "last_stop_signals": 2,
+      "n_loco": 5,
+      "n_station": 7,
+      "peak_locos": 5,
+      "total_slots": 12
+    },
+    "10004": {
+      "fits_one_pair": true,
+      "last_stop_signals": 2,
+      "n_loco": 7,
+      "n_station": 8,
+      "peak_locos": 7,
+      "total_slots": 15
+    },
+    "10005": {
+      "fits_one_pair": true,
+      "last_stop_signals": 2,
+      "n_loco": 6,
+      "n_station": 8,
+      "peak_locos": 6,
+      "total_slots": 14
+    },
+    "10006": {
+      "fits_one_pair": true,
+      "last_stop_signals": 3,
+      "n_loco": 8,
+      "n_station": 10,
+      "peak_locos": 8,
+      "total_slots": 18
+    },
+    "10007": {
+      "fits_one_pair": true,
+      "last_stop_signals": 2,
+      "n_loco": 5,
+      "n_station": 7,
+      "peak_locos": 5,
+      "total_slots": 12
+    },
+    "10008": {
+      "fits_one_pair": true,
+      "last_stop_signals": 2,
+      "n_loco": 6,
+      "n_station": 8,
+      "peak_locos": 6,
+      "total_slots": 14
+    },
+    "10009": {
+      "fits_one_pair": true,
+      "last_stop_signals": 2,
+      "n_loco": 9,
+      "n_station": 10,
+      "peak_locos": 9,
+      "total_slots": 19
+    },
+    "10010": {
+      "fits_one_pair": true,
+      "last_stop_signals": 2,
+      "n_loco": 7,
+      "n_station": 8,
+      "peak_locos": 7,
+      "total_slots": 15
+    },
+    "10011": {
+      "fits_one_pair": false,
+      "last_stop_signals": 4,
+      "n_loco": 28,
+      "n_station": 25,
+      "peak_locos": 28,
+      "total_slots": 53
+    },
+    "10012": {
+      "fits_one_pair": true,
+      "last_stop_signals": 2,
+      "n_loco": 6,
+      "n_station": 8,
+      "peak_locos": 6,
+      "total_slots": 14
+    },
+    "10013": {
+      "fits_one_pair": true,
+      "last_stop_signals": 2,
+      "n_loco": 5,
+      "n_station": 7,
+      "peak_locos": 5,
+      "total_slots": 12
+    },
+    "10014": {
+      "fits_one_pair": true,
+      "last_stop_signals": 2,
+      "n_loco": 8,
+      "n_station": 9,
+      "peak_locos": 8,
+      "total_slots": 17
+    },
+    "10015": {
+      "fits_one_pair": true,
+      "last_stop_signals": 2,
+      "n_loco": 6,
+      "n_station": 8,
+      "peak_locos": 6,
+      "total_slots": 14
+    },
+    "10016": {
+      "fits_one_pair": true,
+      "last_stop_signals": 2,
+      "n_loco": 7,
+      "n_station": 8,
+      "peak_locos": 7,
+      "total_slots": 15
+    },
+    "10017": {
+      "fits_one_pair": true,
+      "last_stop_signals": 2,
+      "n_loco": 5,
+      "n_station": 7,
+      "peak_locos": 5,
+      "total_slots": 12
+    },
+    "10018": {
+      "fits_one_pair": true,
+      "last_stop_signals": 3,
+      "n_loco": 9,
+      "n_station": 11,
+      "peak_locos": 9,
+      "total_slots": 20
+    },
+    "10019": {
+      "fits_one_pair": true,
+      "last_stop_signals": 2,
+      "n_loco": 6,
+      "n_station": 8,
+      "peak_locos": 6,
+      "total_slots": 14
+    },
+    "10020": {
+      "fits_one_pair": true,
+      "last_stop_signals": 2,
+      "n_loco": 7,
+      "n_station": 8,
+      "peak_locos": 7,
+      "total_slots": 15
+    },
+    "10021": {
+      "fits_one_pair": true,
+      "last_stop_signals": 2,
+      "n_loco": 5,
+      "n_station": 7,
+      "peak_locos": 5,
+      "total_slots": 12
+    },
+    "10022": {
+      "fits_one_pair": true,
+      "last_stop_signals": 2,
+      "n_loco": 4,
+      "n_station": 6,
+      "peak_locos": 4,
+      "total_slots": 10
+    }
+  },
+  "reuse_window": 4,
+  "section": {
+    "feasible_per_station": false,
+    "freq_pairs_min": 5,
+    "stations_exceeding_one_pair": [
+      "10011"
+    ],
+    "total_loco_slots": 159,
+    "total_slots": 351,
+    "total_station_slots": 192
+  }
+}

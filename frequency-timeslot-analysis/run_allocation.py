@@ -16,9 +16,23 @@ Options
                       pair, fS, fM; optional row pair=f0 for the control freq).
                       Default: built-in KAVACH reference palette.
     --f0 MHZ          control/emergency frequency (overrides palette/default)
+    --legacy-slots    use the chart's pre-computed slot columns instead of the
+                      (default) spec-traceable slot_demand calculator
+    --peak-cap N      Railway-Board operational cap on supervised trains per
+                      station (operator commissioning policy): e.g. 20, 24.
+                      Default: uncapped (use the chart's peak figure as-is).
+    --boundary FILE   CSV (station_id,pair_id) pinning boundary-station pairs to
+                      the adjacent section (scalable; no prompt)
+    --no-boundary     do not pin boundary stations (tool chooses freely)
+                      [default: if no --boundary and run interactively, ASK]
+    --reserve-pairs N reserve the N highest pairs for boundary stations only
+                      (interior never uses them -> neighbours can't clash)
+    --registry FILE   national boundary registry CSV: pin any station a
+                      neighbouring section already fixed, then write this
+                      section's boundary pairs back (run sections in order)
 
 Examples
-    python3 run_allocation.py example_chart.xlsx
+    python3 run_allocation.py SECAB_FreqAllocation.xlsx
     python3 run_allocation.py chart.xlsx out.xlsx --window 4
     python3 run_allocation.py chart.xlsx --palette palette.csv --f0 402.350
 
@@ -49,6 +63,12 @@ def main(argv):
     f0_cli = None
     strategy = "offset0"
     gap_ms = None
+    legacy_slots = False        # default: compute slots with slot_demand
+    boundary_file = None        # CSV of station_id,pair_id (scalable boundary pins)
+    no_boundary = False         # skip boundary pinning entirely
+    reserve_n = 0               # reserve N pairs for boundary stations only
+    registry_file = None        # national boundary registry CSV (read + write back)
+    peak_cap = None             # Railway-Board operational cap on supervised trains
     rest = argv[2:]
     i = 0
     while i < len(rest):
@@ -62,6 +82,18 @@ def main(argv):
             strategy = rest[i + 1]; i += 2
         elif rest[i] == "--gap-ms" and i + 1 < len(rest):
             gap_ms = float(rest[i + 1]); i += 2
+        elif rest[i] == "--legacy-slots":
+            legacy_slots = True; i += 1
+        elif rest[i] == "--boundary" and i + 1 < len(rest):
+            boundary_file = rest[i + 1]; i += 2
+        elif rest[i] == "--no-boundary":
+            no_boundary = True; i += 1
+        elif rest[i] == "--reserve-pairs" and i + 1 < len(rest):
+            reserve_n = int(rest[i + 1]); i += 2
+        elif rest[i] == "--registry" and i + 1 < len(rest):
+            registry_file = rest[i + 1]; i += 2
+        elif rest[i] == "--peak-cap" and i + 1 < len(rest):
+            peak_cap = int(rest[i + 1]); i += 2
         else:
             out = rest[i]; i += 1
     if out is None:
@@ -94,13 +126,83 @@ def main(argv):
     if f0_cli is not None:
         f0 = f0_cli
 
-    # --- read -> solve -> write ---
+    # --- read -> (slot demand) -> boundary pins -> solve -> write ---
+    import boundary
+    import multipair
+    import slot_demand as SD
     gap_slots = None if gap_ms is None else math.ceil(gap_ms / A.MARKER_MS)
     chart = excel_io.read_chart(inp)
-    prob = excel_io.build_problem(chart, palette=palette, f0=f0, reuse_window=window)
-    # staggering (residual three-tone IM minimisation) is always on in the pipeline
-    result = A.solve_compliant(prob, slot_strategy=strategy, gap_slots=gap_slots)
-    excel_io.write_compliant_xlsx(out, prob, result, chart["existing_pair"])
+    prob = excel_io.build_problem(chart, palette=palette, f0=f0,
+                                  reuse_window=window,
+                                  use_slot_demand=not legacy_slots,
+                                  peak_load_cap=peak_cap)
+
+    # spec-traceable slot demand summary + per-section spectrum roll-up (default ON)
+    src_slots = "legacy chart column" if legacy_slots else "slot_demand (RDSO-traceable)"
+    roll = SD.section_rollup(
+        {sid: SD.StationDemandInputs(peak_locos=chart["loco_slots"].get(sid, 0),
+                                     last_stop_signals=chart.get("signals", {}).get(sid, 2),
+                                     peak_load_cap=peak_cap)
+         for sid in chart["stations"]}, reuse_window=window)
+    if peak_cap is not None:
+        print(f"Peak-load: supervised trains capped at {peak_cap}/station "
+              f"(operator commissioning policy)")
+    print(f"Slots  : demand from {src_slots}; section needs >= "
+          f"{roll['freq_pairs_min']} frequency pairs "
+          f"(total demand {roll['total_slots']} slots; "
+          + ("all stations fit one pair)" if roll["feasible_per_station"]
+             else f"OVER 44: {roll['stations_exceeding_one_pair']})"))
+
+    # boundary frequency handling -- never assume; sources combine in this order
+    pins = {}
+    if not no_boundary:
+        # (a) reserve a sub-palette for boundary stations only
+        if reserve_n > 0:
+            res = boundary.reserved_pairs(prob.palette, reserve_n)
+            boundary.reserve_for_boundary(prob, res)
+            print(f"Boundary: reserved pairs {sorted(res)} for boundary stations")
+        # (b) national registry: pin any station a neighbouring section already fixed
+        if registry_file:
+            pins.update(boundary.registry_pins_for(
+                boundary.read_registry(registry_file), prob.stations))
+        # explicit boundary file, else ASK if interactive (suppressed when a
+        # registry is supplying the pins)
+        pins.update(boundary.resolve_pins(
+            prob.stations, prob.palette, boundary_file=boundary_file,
+            interactive=(False if registry_file else None)))
+        if pins:
+            boundary.apply_pins(prob, pins)
+            print(f"Boundary: pinned {pins}")
+
+    # staggering (always on) + automatic multi-pair split for over-capacity
+    # stations (demand > one pair's 44 markers). `eprob` has any split sub-units.
+    result, eprob = multipair.solve_multipair(prob, slot_strategy=strategy,
+                                              gap_slots=gap_slots)
+    multi = {o: ps for o, ps in result["station_pairs"].items() if len(ps) > 1}
+    if multi:
+        print(f"Multi-pair: stations over {multipair.usable_markers(prob)} markers "
+              f"split across pairs -> {multi}")
+
+    # (b) write this section's boundary assignments back (original ids -> pair)
+    if registry_file and not no_boundary:
+        colour_by_orig = {o: ps[0] for o, ps in result["station_pairs"].items()}
+        boundary.update_registry(registry_file, prob.stations, colour_by_orig)
+        print(f"Boundary: registry updated -> {registry_file}")
+
+    prob = eprob   # report on the (possibly expanded) problem -> sub-units shown
+    # provenance: tie this output back to the code version + exact input
+    import datetime
+    import provenance as PROV
+    prov = PROV.build(
+        inp, reuse_window=window, slot_source=src_slots,
+        spectrum=result["spectrum"],
+        validation=("PASS" if not result["errors"] else f"{result['errors']}"),
+        timestamp=datetime.datetime.now(datetime.timezone.utc)
+                          .strftime("%Y-%m-%dT%H:%M:%SZ"))
+    if peak_cap is not None:
+        prov.append(("peak_load_cap", peak_cap))
+    excel_io.write_compliant_xlsx(out, prob, result, chart["existing_pair"],
+                                  provenance=prov)
     csv_path = os.path.splitext(out)[0] + ".csv"
     A.write_allocation_csv(csv_path, prob, result)
 
@@ -132,8 +234,8 @@ def main(argv):
     for s, old, new, reason in changes:
         print(f"  station {s}: pair {old} -> {new}  ({reason})")
 
-    print(f"\nWritten:\n  {out}   (Allocation / Compliance / Justification sheets)"
-          f"\n  {csv_path}   (per-station table)")
+    print(f"\nWritten:\n  {out}   (Allocation / Compliance / Justification / "
+          f"Provenance sheets)\n  {csv_path}   (per-station table)")
     return 0
 
 

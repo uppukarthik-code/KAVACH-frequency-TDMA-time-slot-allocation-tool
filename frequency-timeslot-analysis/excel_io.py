@@ -2,7 +2,7 @@
 """
 Excel I/O for the KAVACH allocation solver.
 
-Reads the RDSO "FREQUENCY ALLOCATION CHART (EXAMPLE)" workbook (sheet
+Reads the RDSO "FREQUENCY ALLOCATION CHART (SEC-A-SEC-B)" workbook (sheet
 "Frequency allocation") and extracts, per Stationary KAVACH unit:
     station id, #Stationary KAVACH Tx slots, #Loco KAVACH Tx slots (peak
     onboard), and the existing 'Proposed Frequency Pair'.
@@ -24,6 +24,7 @@ _LBL_ID = "stationary kavach id"
 _LBL_PEAK = "peak nos"               # Peak nos. of Onboard Kavach Units  -> loco slots
 _LBL_PAIR = "proposed frequency pair"
 _LBL_STA = "number of stationary"    # Number of Stationary Kavach Tx slots
+_LBL_SIG = "last stop signal"        # No. of Last Stop Signals -> slot-demand input
 
 
 def _find_row(ws, keyword):
@@ -60,6 +61,7 @@ def read_chart(path, sheet="Frequency allocation"):
     r_peak = _find_row(ws, _LBL_PEAK)
     r_pair = _find_row(ws, _LBL_PAIR)
     r_sta = _find_row(ws, _LBL_STA)
+    r_sig = _find_row(ws, _LBL_SIG)
     if r_id is None:
         raise ValueError("could not locate 'Stationary Kavach ID' row")
     missing = [name for name, r in (("Number of Stationary Kavach Tx slots", r_sta),
@@ -82,7 +84,7 @@ def read_chart(path, sheet="Frequency allocation"):
             return 0
         return v
 
-    stations, sta, loco, existing = [], {}, {}, {}
+    stations, sta, loco, existing, sig = [], {}, {}, {}, {}
     seen = set()
     for c in range(1, ws.max_column + 1):
         sid = _int(ws.cell(r_id, c).value)
@@ -95,6 +97,7 @@ def read_chart(path, sheet="Frequency allocation"):
         stations.append(sid)
         sta[sid] = cell_int(r_sta, c, "Stationary Tx slots")
         loco[sid] = cell_int(r_peak, c, "Loco slots")
+        sig[sid] = cell_int(r_sig, c, "Last stop signals") if r_sig else 2
         if r_pair:
             p = _int(ws.cell(r_pair, c).value)
             if p is not None:
@@ -102,7 +105,7 @@ def read_chart(path, sheet="Frequency allocation"):
     if not stations:
         raise ValueError("no Stationary Kavach IDs (10000-99999) found in chart")
     return {"stations": stations, "sta_slots": sta, "loco_slots": loco,
-            "existing_pair": existing}
+            "signals": sig, "existing_pair": existing}
 
 
 def _parse_palette_rows(rows):
@@ -159,13 +162,32 @@ def read_palette(path):
     return _parse_palette_rows(rows)
 
 
-def build_problem(chart, palette=None, f0=KAVACH_F0, **kw):
+def build_problem(chart, palette=None, f0=KAVACH_F0, use_slot_demand=False,
+                  peak_load_cap=None, **kw):
+    """Build a Problem from a parsed chart.
+    use_slot_demand=True -> compute (n_station, n_loco) with the spec-traceable
+    slot_demand calculator from the chart's peak-onboard + last-stop-signals,
+    instead of reading the chart's pre-computed slot columns.
+    peak_load_cap -> clamp supervised trains per station to this many (Railway
+    operational cap (operator commissioning policy; e.g. 24 for the final phase)."""
     palette = palette or _mk_palette()
-    return Problem(chart["stations"], chart["sta_slots"], chart["loco_slots"],
-                   palette, f0=f0, **kw)
+    if use_slot_demand:
+        import slot_demand as SD
+        sta, loco = {}, {}
+        for sid in chart["stations"]:
+            N = chart["loco_slots"].get(sid, 0)               # peak onboard units
+            S = chart.get("signals", {}).get(sid, 2)          # last stop signals
+            r = SD.slot_demand(SD.StationDemandInputs(peak_locos=N,
+                                                      last_stop_signals=S,
+                                                      peak_load_cap=peak_load_cap))
+            sta[sid], loco[sid] = r["n_station"], r["n_loco"]
+    else:
+        sta, loco = chart["sta_slots"], chart["loco_slots"]
+    return Problem(chart["stations"], sta, loco, palette, f0=f0, **kw)
 
 
-def write_compliant_xlsx(path, prob: Problem, result: dict, existing_pair: dict):
+def write_compliant_xlsx(path, prob: Problem, result: dict, existing_pair: dict,
+                         provenance: list = None):
     import openpyxl
     wb = openpyxl.Workbook()
 
@@ -196,6 +218,13 @@ def write_compliant_xlsx(path, prob: Problem, result: dict, existing_pair: dict)
     wj.append(["Station", "Old pair", "New pair", "Reason"])
     for s, old, new, reason in justify_changes(prob, result, existing_pair):
         wj.append([s, old, new, reason])
+
+    # --- Provenance sheet (audit: ties this output to code + input) ---
+    if provenance:
+        wp = wb.create_sheet("Provenance")
+        wp.append(["Key", "Value"])
+        for k, v in provenance:
+            wp.append([k, v])
 
     wb.save(path)
     return path
