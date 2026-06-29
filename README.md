@@ -27,7 +27,16 @@ review and Independent Safety Assessment (ISA), not a safety authority.
   station window for a fresh same-cycle Movement Authority).
 - **Time-domain staggering** — minimise residual 3-tone IM slot-coincidences so
   the products cannot form (requires OR-Tools CP-SAT).
-- **Compliance + justification reporting** and **Excel/CSV I/O**.
+- **Slot-demand calculator** — derives each station's Stationary-Tx / Loco-Tx
+  slot counts from first principles, every constant traced to RDSO SPN/196
+  Annexure-C (`slot_demand.py`; see `docs/methodology/`).
+- **Multi-pair terminals** — a station whose demand exceeds one pair's 44 markers
+  is automatically split across multiple frequency pairs (`multipair.py`).
+- **Boundary consistency** — pin or reserve frequency pairs at section joins so
+  adjacent sections stay consistent when a network is allocated piece-by-piece
+  (`boundary.py`).
+- **Compliance + justification reporting**, **run provenance** (tool version +
+  input hash stamped into each output), and **Excel/CSV I/O**.
 
 Standards referenced: RDSO SPN/196/2020 (multiple-access scheme & TDMA frame),
 RDSO TAN clause 4.11 (allocation rules), SPN/196 clause 17.14 (frame-offset).
@@ -45,13 +54,17 @@ python3 allocation_solver.py
 python3 run_allocation.py  your_chart.xlsx  out.xlsx  --window 4
 ```
 
-`run_allocation.py` reads an RDSO "Frequency Allocation Chart" workbook, prints
-the full per-station allocation + compliance + change justification, and writes
-an output workbook (Allocation / Compliance / Justification sheets) plus a CSV.
+`run_allocation.py` reads an RDSO "Frequency Allocation Chart" workbook, computes
+each station's slot demand from first principles, prints the full per-station
+allocation + compliance + change justification, and writes an output workbook
+(Allocation / Compliance / Justification / **Provenance** sheets) plus a CSV.
 
 CLI options: `--window N` (interference radius in stations), `--palette FILE`
 (custom palette CSV/XLSX), `--f0 MHZ` (control frequency),
-`--slot-strategy {offset0,compact}`, `--gap-ms N`.
+`--slot-strategy {offset0,compact}`, `--gap-ms N`, `--legacy-slots` (use the
+chart's pre-computed slot columns), `--peak-cap N` (cap supervised trains per
+station), and `--boundary FILE` / `--reserve-pairs N` / `--registry FILE` for
+section-boundary consistency.
 
 ## Solver backends
 
@@ -75,10 +88,33 @@ frequency-timeslot-analysis/
   dense_area.py       directional-antenna + joint freq×slot extensions
   excel_io.py         RDSO chart read / output workbook write
   run_allocation.py   command-line entry point
+  slot_demand.py      spec-traceable slot-demand calculator (SPN/196 Annexure-C)
+  multipair.py        auto-split busy terminals across >1 frequency pair
+  boundary.py         boundary-frequency pinning + national registry
+  provenance.py       stamps each output with tool version + input hash
   im3_analysis.py     standalone IM3 study (illustrative)
-  tests/              pytest suite
+  tests/              pytest suite (+ fixtures/ golden back-test)
   optimization-framework.md   the two-layer method (design rationale)
+docs/methodology/
+  slot_demand_derivation.md   the slot-demand formula, every constant traced
+  backtest_synthetic.md       back-test method + results (synthetic chart)
 ```
+
+## Reproducibility & audit
+
+Every published figure is regenerated from committed sources:
+
+```bash
+cd frequency-timeslot-analysis
+python3 tests/fixtures/make_synthetic_chart.py   # rebuild the synthetic chart
+python3 tests/fixtures/make_golden.py            # re-freeze the golden values
+python3 -m pytest tests/test_backtest_golden.py -q
+python3 slot_demand.py                           # print the constant-traceability table
+```
+
+`docs/methodology/` derives the slot-demand model with every constant traced to
+RDSO SPN/196 Annexure-C, and documents the back-test on a synthetic chart. All
+data in this repository is synthetic/illustrative.
 
 ## Tests
 
